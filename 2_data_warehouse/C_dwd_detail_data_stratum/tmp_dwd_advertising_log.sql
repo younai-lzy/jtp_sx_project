@@ -225,6 +225,11 @@ FROM
             )t1
     )t2
 GROUP BY client_ip, ads_id, interval_ms
+HAVING count(1) > 5
 ;
+
+-- 同一设备访问过快：5分钟内超过100次
+-- 若同一设备在短时间内访问（包括曝光和点击）同一广告多次，则认定该设备的所有流量均为异常流量
+
 
 
