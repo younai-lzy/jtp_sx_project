@@ -142,7 +142,7 @@ CREATE FUNCTION default.ua_to_browser AS 'com.sina.UaToBrowser'
  USING JAR 'hdfs://node101:8020/warehouse/ads_jars/jtp-amazon-warehouse-1.0-SNAPSHOT.jar';
 
 -- 解析客户端信息
-DROP TABLE IF EXISTS tmp_dwd_ads_event_log_broswer;
+DROP TABLE IF EXISTS tmp_dwd_ads_event_log_browser;
 CREATE TABLE IF NOT EXISTS tmp_dwd_ads_event_log_browser
 AS
 SELECT event_time,
@@ -165,7 +165,7 @@ SELECT event_time,
        client_device_id,
        client_os_type,
        browser_map['os_version'] AS client_os_version,
-       browser_map['browser'] AS client_os_version_type,
+       browser_map['browser'] AS client_browser_type,
        browser_map['browser_version'] AS client_browser_version,
        client_user_agent
 FROM (SELECT *,
@@ -228,8 +228,156 @@ GROUP BY client_ip, ads_id, interval_ms
 HAVING count(1) > 5
 ;
 
--- 同一设备访问过快：5分钟内超过100次
+-- TODO 3 同一设备访问过快：5分钟内超过100次
 -- 若同一设备在短时间内访问（包括曝光和点击）同一广告多次，则认定该设备的所有流量均为异常流量
+SELECT
+    DISTINCT client_device_id
+FROM
+    (
+        SELECT
+            client_device_id, ads_id, event_time
+            -- 使用count聚合开窗函数
+            , count(1) OVER (PARTITION BY client_device_id, ads_id ORDER BY cast(event_time AS BIGINT)
+                RANGE BETWEEN 300000 PRECEDING AND CURRENT ROW
+            ) AS cnt
+        FROM tmp_dwd_ads_event_log_parse
+    ) t1
+WHERE t1.cnt > 100
+;
+
+-- todo 4.同一设备固定周期访问：固定周期访问超过5次
+-- 若同一设备对同一广告有周期性的访问记录（例如每隔10s，访问一次），则认定该设备的所有流量均为异常流量
+-- s3.按照device, ads_id, interval_ms, count(1) AS cnt
+SELECT
+    DISTINCT client_device_id
+FROM
+    (
+        -- 2.计算相邻2次访问时间间隔
+        SELECT
+            client_device_id, ads_id, event_time, next_event_time
+             -- 计算访问时间间隔
+             , (next_event_time - event_time) AS interval_ms
+        FROM
+            (-- s1 获取下一次访问时间
+                SELECT
+                    client_device_id, ads_id, event_time
+                     , lead() over (PARTITION BY client_device_id, ads_id ORDER BY event_time) AS next_event_time
+                FROM tmp_dwd_ads_event_log_parse
+            )t1
+    )t2
+GROUP BY client_device_id, ads_id, interval_ms
+HAVING count(1) > 5
+;
+
+--
+DROP TABLE IF EXISTS tmp_dwd_ads_event_log_traffic;
+CREATE TABLE IF NOT EXISTS tmp_dwd_ads_event_log_traffic
+AS
+WITH
+    -- 规则：ip
+    tmp_ip AS (
+        SELECT
+            DISTINCT client_ip
+        FROM
+            (
+                SELECT
+                    client_ip, ads_id, event_time
+                     -- 使用count聚合开窗函数
+                     , count(1) OVER(PARTITION BY client_ip, ads_id ORDER BY cast(event_time AS BIGINT)
+                         RANGE BETWEEN 300000 PRECEDING AND CURRENT ROW ) AS cnt
+                FROM tmp_dwd_ads_event_log_parse
+            )t1
+        WHERE t1.cnt > 100
+        UNION
+        SELECT
+            DISTINCT client_ip
+        FROM
+            (
+                -- 2.计算相邻2次访问时间间隔
+                SELECT
+                    client_ip, ads_id, event_time, next_event_time
+                     -- 计算访问时间间隔
+                     , (next_event_time - event_time) AS interval_ms
+                FROM
+                    (-- s1 获取下一次访问时间
+                        SELECT
+                            client_ip, ads_id, event_time
+                             , lead(event_time, 1, 0) over (PARTITION BY client_ip, ads_id ORDER BY event_time) AS next_event_time
+                        FROM tmp_dwd_ads_event_log_parse
+                    )t1
+            )t2
+        GROUP BY client_ip, ads_id, interval_ms
+        HAVING count(1) > 5
+    ),
+    --规则：device
+    tmp_device AS (
+        SELECT
+            DISTINCT client_device_id
+        FROM
+            (
+                SELECT
+                    client_device_id, ads_id, event_time
+                     -- 使用count聚合开窗函数
+                     , count(1) OVER(PARTITION BY client_device_id, ads_id ORDER BY cast(event_time AS BIGINT)
+                    RANGE BETWEEN 300000 PRECEDING AND CURRENT ROW ) AS cnt
+                FROM tmp_dwd_ads_event_log_parse
+            )t1
+        WHERE t1.cnt > 100
+        UNION
+        SELECT
+            DISTINCT client_device_id
+        FROM
+            (
+                -- 2.计算相邻2次访问时间间隔
+                SELECT
+                    client_device_id, ads_id, event_time, next_event_time
+                     -- 计算访问时间间隔
+                     , (next_event_time - event_time) AS interval_ms
+                FROM
+                    (-- s1 获取下一次访问时间
+                        SELECT
+                            client_device_id, ads_id, event_time
+                             , lead(event_time, 1, 0) over (PARTITION BY client_device_id, ads_id ORDER BY event_time) AS next_event_time
+                        FROM tmp_dwd_ads_event_log_parse
+                    )t1
+            )t2
+        GROUP BY client_device_id, ads_id, interval_ms
+        HAVING count(1) > 5
+    )
+SELECT
+    t1.event_time
+    , t1.event_type
+    , t1.ads_id
+    , t1.ads_name
+    , t1.ads_product_id
+    , t1.ads_product_name
+    , t1.ads_product_price
+    , t1.ads_materail_id
+    , t1.ads_group_id
+    , t1.platform_id
+    , t1.platform_name_en
+    , t1.platform_name_zh
+    , t1.client_country
+    , t1.client_area
+    , t1.client_province
+    , t1.client_city
+    , t1.client_ip
+    , t1.client_device_id
+    , t1.client_os_type
+    , t1.client_os_version
+    , t1.client_browser_type
+    , t1.client_browser_version
+    , t1.client_user_agent
+    -- 判断确定是否为异常流量
+    , t2.client_ip IS NULL AND t3.client_device_id IS NULL AS is_invalid_traffic
+FROM tmp_dwd_ads_event_log_browser t1
+LEFT JOIN tmp_ip t2 ON t1.client_ip = t2.client_ip
+LEFT JOIN tmp_device t3 ON t1.client_device_id = t3.client_device_id
+;
+
+SELECT *
+FROM tmp_dwd_ads_event_log_traffic
+;
 
 
 
