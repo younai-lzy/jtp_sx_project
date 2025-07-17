@@ -187,11 +187,44 @@ FROM tmp_dwd_ads_event_log_browser;
 
 --  todo 1.同一IP访问过快：同一个IP地址，在5分钟（5 * 60 * 1000）内超过100次
 SELECT
-    client_ip, ads_id, event_time
-    -- 使用count聚合开窗函数
-    , count(1) OVER (PARTITION BY client_ip, ads_id ORDER BY CAST(event_time AS BIGINT)
-            RANGE BETWEEN
-        )
+    DISTINCT client_ip
+FROM
+    (
+        SELECT client_ip
+             , ads_id
+             , event_time
+             -- 使用count聚合开窗函数
+             , count(1) OVER (PARTITION BY client_ip, ads_id ORDER BY CAST(event_time AS BIGINT)
+            RANGE BETWEEN 300000 PRECEDING AND CURRENT ROW
+            ) AS cnt
+        FROM tmp_dwd_ads_event_log_parse
+    ) t1
+WHERE t1.cnt > 100
+;
+
+-- todo 2.同一ip固定周期访问：同一个IP地址，固定周期访问超过5次
+-- 若同一Ip对同一广告有周期性的访问记录（例如每隔10s, 访问一次），则认定该ip的所有流量均为异常流量
+
+-- s3 按照ip、ads和interval分组计数并过滤
+SELECT
+    DISTINCT
+    client_ip, ads_id, interval_ms, count(1) AS cnt
+FROM
+    (
+        SELECT
+            client_ip, ads_id, event_time, next_event_time
+             -- s2 计算访问时间间隔
+             , (next_event_time - event_time) AS interval_ms
+        FROM
+            (
+                -- s1 获取下一次访问时间
+                SELECT
+                    client_ip, ads_id, event_time
+                     , lead(event_time, 1, 0) over (PARTITION BY client_ip, ads_id ORDER BY event_time) AS next_event_time
+                FROM tmp_dwd_ads_event_log_parse
+            )t1
+    )t2
+GROUP BY client_ip, ads_id, interval_ms
+;
 
 
-FROM tmp_dwd_ads_event_log_parse
