@@ -105,7 +105,9 @@ FROM tmp_dwd_ads_event_log_dim;
 
 -- TODO 3.解析IP地址
 -- 获取地理区域信息， 使用UDF函数
-DROP TABLE IF EXISTS tmp_dwd_event_log_region;
+DROP TABLE IF EXISTS ;
+
+REFRESH jtp_ads_warehouse;
 CREATE TABLE IF NOT EXISTS tmp_dwd_ads_event_log_region
 AS
 SELECT event_time
@@ -136,10 +138,10 @@ FROM (SELECT *, default.ip_to_region(client_ip) AS region_map
 SELECT *
 FROM tmp_dwd_ads_event_log_region;
 
-
+SHOW FUNCTIONS LIKE 'ip_to_region';
 -- 创建udf函数
-CREATE FUNCTION default.ua_to_browser AS 'com.sina.UaToBrowser'
- USING JAR 'hdfs://node101:8020/warehouse/ads_jars/jtp-amazon-warehouse-1.0-SNAPSHOT.jar';
+-- CREATE FUNCTION default.ua_to_browser AS 'com.sina.UaToBrowser'
+--  USING JAR 'hdfs://node101:8020/warehouse/ads_jars/jtp-amazon-warehouse-1.0-SNAPSHOT.jar';
 
 -- 解析客户端信息
 DROP TABLE IF EXISTS tmp_dwd_ads_event_log_browser;

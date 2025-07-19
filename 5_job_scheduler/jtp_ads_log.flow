@@ -1,0 +1,33 @@
+nodes:
+  - name: jtp_ads_mysql_to_hdfs
+    type: command
+    config:
+      command: bash jtp_ads_mysql_to_hdfs.sh ${dt}
+      retries: 3
+      retry.backoff: 10000
+
+  - name: jtp_ads_hdfs_to_ods
+    type: command
+    dependsOn:
+      - jtp_ads_mysql_to_hdfs
+    config:
+      command: bash jtp_ads_hdfs_to_ods.sh ${dt}
+
+  - name: jtp_ads_ods_to_dim
+    type: command
+    dependsOn:
+      - jtp_ads_hdfs_to_ods
+    config:
+      command: bash jtp_ads_ods_to_dim.sh ${dt}
+      retries: 3
+      retry.backoff: 10000
+
+  - name: jtp_ads_ods_to_dwd
+    type: command
+    dependsOn:
+      - jtp_ads_hdfs_to_ods
+      - jtp_ads_ods_to_dim
+    config:
+      command: bash jtp_ads_ods_to_dwd.sh ${dt}
+      retries: 3
+      retry.backoff: 10000

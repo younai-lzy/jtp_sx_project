@@ -17,10 +17,7 @@ CREATE TABLE IF NOT EXISTS ods_ads_log_inc
 -- 加载数据
 
 LOAD DATA INPATH '/warehouse/ads_logs/2024-10-01' OVERWRITE INTO TABLE jtp_ads_warehouse.ods_ads_log_inc PARTITION (dt = '2024-10-01');
-LOAD DATA INPATH '/warehouse/ads_logs/2024-10-02' OVERWRITE INTO TABLE jtp_ads_warehouse.ods_ads_log_inc PARTITION (dt = '2024-10-01');
-LOAD DATA INPATH '/warehouse/ads_logs/2024-10-03' OVERWRITE INTO TABLE jtp_ads_warehouse.ods_ads_log_inc PARTITION (dt = '2024-10-01');
-LOAD DATA INPATH '/warehouse/ads_logs/2024-10-04' OVERWRITE INTO TABLE jtp_ads_warehouse.ods_ads_log_inc PARTITION (dt = '2024-10-01');
-LOAD DATA INPATH '/warehouse/ads_logs/2024-10-05' OVERWRITE INTO TABLE jtp_ads_warehouse.ods_ads_log_inc PARTITION (dt = '2024-10-01');
+
 
 -- SHOW PARTITIONS
 SHOW PARTITIONS jtp_ads_warehouse.ods_ads_log_inc;
